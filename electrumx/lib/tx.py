@@ -105,6 +105,31 @@ class TxOutput:
         ))
 
 
+@dataclass
+class TxOutputNavcoin:
+    __slots__ = 'value', 'pk_script', 'ek', 'ok', 'sk', 'tokenid', 'tokennftid', 'vdata'
+    value: int
+    pk_script: bytes
+    ek: bytes
+    ok: bytes
+    sk: bytes
+    tokenid: bytes
+    tokennftid: int
+    vdata: bytes
+
+    def serialize(self):
+        return b''.join((
+            pack_le_int64(self.value),
+            pack_varbytes(self.pk_script),
+            pack_varbytes(self.ek),
+            pack_varbytes(self.ok),
+            pack_varbytes(self.sk),
+            self.tokenid,
+            pack_le_int64(self.tokennftid),
+            pack_varbytes(self.vdata),
+        ))
+
+
 class Deserializer:
     '''Deserializes blocks into transactions.
 
@@ -580,6 +605,12 @@ class DeserializerTxTimeSegWitNavCoin(DeserializerTxTime):
 
     def _read_output(self):
         value = self._read_le_int64()
+        ek = None
+        ok = None
+        sk = None
+        tokenid = None
+        tokennftid = None
+        vdata = None
         if value == -1:
             value = self._read_le_int64()
             ek = self._read_varbytes()
@@ -606,12 +637,59 @@ class DeserializerTxTimeSegWitNavCoin(DeserializerTxTime):
             a = self._read_varbytes()
             b = self._read_varbytes()
             t = self._read_varbytes()
-        return TxOutput(
+        elif value & 0x2<<62:
+            flags = value
+            if flags & 0x1<<0:
+                value = self._read_le_int64()
+            else:
+                value = 0
+            if flags & 0x1 << 1:
+                ek = self._read_varbytes()
+            if flags & 0x1 << 2:
+                ok = self._read_varbytes()
+            if flags & 0x1 << 3:
+                sk = self._read_varbytes()
+            if flags & 0x1 << 4:
+                v_count = self._read_varint()
+                v = []
+                for i in range(v_count):
+                    v.append(self._read_varbytes())
+                l = []
+                l_count = self._read_varint()
+                for i in range(l_count):
+                    l.append(self._read_varbytes())
+                r = []
+                r_count = self._read_varint()
+                for i in range(r_count):
+                    r.append(self._read_varbytes())
+                A = self._read_varbytes()
+                S = self._read_varbytes()
+                T1 = self._read_varbytes()
+                T2 = self._read_varbytes()
+                taux = self._read_varbytes()
+                mu = self._read_varbytes()
+                a = self._read_varbytes()
+                b = self._read_varbytes()
+                t = self._read_varbytes()
+            if flags & 0x1 << 5:
+                tokenid = self._read_nbytes(32)
+            if flags & 0x1 << 6:
+                tokennftid = self._read_le_int64()
+            if flags & 0x1 << 7:
+                vdata = self._read_varbytes()
+        return TxOutputNavcoin(
             value,  # value
             self._read_varbytes(),  # pk_script
+            ek,
+            ok,
+            sk,
+            tokenid,
+            tokennftid,
+            vdata
         )
 
-    def read_tx_no_segwit(self):
+
+    def read_tx_no_segwit(self, start):
         version = self._read_le_int32()
         time = self._read_le_uint32()
         inputs = self._read_inputs()
@@ -629,7 +707,8 @@ class DeserializerTxTimeSegWitNavCoin(DeserializerTxTime):
             time,
             inputs,
             outputs,
-            locktime
+            locktime,
+            self.binary[start:self.cursor]
         )
 
     def _read_tx_parts(self):
@@ -637,7 +716,7 @@ class DeserializerTxTimeSegWitNavCoin(DeserializerTxTime):
         start = self.cursor
         marker = self.binary[self.cursor + 8]
         if marker:
-            tx = self.read_tx_no_segwit()
+            tx = self.read_tx_no_segwit(start)
             tx_hash = self.TX_HASH_FN(self.binary[start:self.cursor])
             return tx, tx_hash, self.binary_length
 
@@ -667,7 +746,7 @@ class DeserializerTxTimeSegWitNavCoin(DeserializerTxTime):
         orig_ser += self.binary[start:self.cursor]
 
         return TxTimeSegWit(
-            version, time, marker, flag, inputs, outputs, witness, locktime),\
+            version, time, marker, flag, inputs, outputs, witness, locktime, orig_ser),\
             self.TX_HASH_FN(orig_ser), vsize
 
     def read_tx(self):
