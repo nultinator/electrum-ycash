@@ -1437,6 +1437,21 @@ class ZcashTestnet(Zcash):
     TX_PER_BLOCK = 2
     RPC_PORT = 18232
 
+class Ycash(EquihashMixIn, Coin):
+    NAME = "Ycash"
+    SHORTNAME = "YEC"
+    NET = "mainnet"
+    P2PKH_VERBYTE = bytes.fromhex("1CB8")
+    P2SH_VERBYTES = (bytes.fromhex("1CDB"),)
+    GENESIS_HASH = ('00040fe8ec8471911baa1db1266ea15d',
+                    'd06b4a8a5c453883c000b031973dce08')
+    DESERIALIZER = lib_tx.DeserializerZcash
+    TX_COUNT = 329196
+    TX_COUNT_HEIGHT = 68379
+    TX_PER_BLOCK = 5
+    RPC_PORT = 8832
+    REORG_LIMIT = 800
+
 
 class SnowGem(EquihashMixin, Coin):
     NAME = "SnowGem"
